@@ -1,15 +1,19 @@
 import os
 import requests
+import threading
+import asyncio
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import uuid
 from database import init_db, save_transaction, get_transaction, mark_as_paid
 from unifi import create_voucher
+import webhook  # our Flask webhook receiver
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
+PORT = int(os.getenv("PORT", 8080))
 
 PLANS = {
     "daily": {
@@ -120,8 +124,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not transaction:
             await query.edit_message_text("⚠️ Transaction not found. Please start again with /buy.")
             return
-##here
+
         if transaction["status"] == "paid":
+            # Already processed — likely the webhook beat the manual tap to it
             await query.edit_message_text("✅ This payment was already confirmed and processed.")
             return
 
@@ -221,9 +226,20 @@ async def email_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+def run_webhook_server():
+    """Runs the Flask webhook server in a background thread."""
+    webhook.webhook_app.run(host="0.0.0.0", port=PORT, use_reloader=False)
+
+
+async def post_init(application):
+    """Captures the running event loop so the webhook thread can schedule Telegram messages onto it."""
+    webhook.set_bot_instance(application.bot)
+    application.bot._loop = asyncio.get_running_loop()
+
+
 def main():
     init_db()
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
@@ -232,6 +248,11 @@ def main():
 
     # Email handler — must come after command handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, email_handler))
+
+    # Start Flask webhook server in a background thread alongside Telegram polling
+    webhook_thread = threading.Thread(target=run_webhook_server, daemon=True)
+    webhook_thread.start()
+    print(f"Webhook server running on port {PORT}...")
 
     print("Bot is running...")
     app.run_polling()
