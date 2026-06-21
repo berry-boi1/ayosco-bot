@@ -1,6 +1,6 @@
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 from datetime import datetime
 
 # Railway automatically provides this when you add a PostgreSQL plugin
@@ -8,7 +8,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_connection():
-    return psycopg2.connect(DATABASE_URL)
+    return psycopg.connect(DATABASE_URL)
 
 
 def init_db():
@@ -49,7 +49,7 @@ def save_transaction(reference, user_id, plan):
 def get_transaction(reference):
     """Fetches a transaction by reference. Returns a dict or None."""
     conn = get_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor = conn.cursor(row_factory=dict_row)
     cursor.execute("SELECT * FROM transactions WHERE reference = %s", (reference,))
     row = cursor.fetchone()
     cursor.close()
