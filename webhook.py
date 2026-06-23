@@ -14,14 +14,16 @@ PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
 
 webhook_app = Flask(__name__)
 
-# This will be set by bot.py when it starts, so the webhook can send Telegram messages
+# These are set by bot.py when it starts, so the webhook can send Telegram messages
 telegram_bot = None
+bot_loop = None
 
 
-def set_bot_instance(bot):
-    """Called from bot.py to give this module access to the running bot."""
-    global telegram_bot
+def set_bot_instance(bot, loop):
+    """Called from bot.py to give this module access to the running bot and its event loop."""
+    global telegram_bot, bot_loop
     telegram_bot = bot
+    bot_loop = loop
 
 
 def verify_signature(payload_body, signature_header):
@@ -91,10 +93,10 @@ def paystack_webhook():
         )
 
     # Send the Telegram message from this sync Flask route into the bot's async loop
-    if telegram_bot:
+    if telegram_bot and bot_loop:
         asyncio.run_coroutine_threadsafe(
             telegram_bot.send_message(chat_id=user_id, text=message, parse_mode="Markdown"),
-            telegram_bot._loop
+            bot_loop
         )
 
     return jsonify({"status": "success"}), 200

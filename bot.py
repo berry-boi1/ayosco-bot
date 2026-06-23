@@ -233,8 +233,8 @@ def run_webhook_server():
 
 async def post_init(application):
     """Captures the running event loop so the webhook thread can schedule Telegram messages onto it."""
-    webhook.set_bot_instance(application.bot)
-    application.bot._loop = asyncio.get_running_loop()
+    loop = asyncio.get_running_loop()
+    webhook.set_bot_instance(application.bot, loop)
 
 
 def main():
